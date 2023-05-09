@@ -47,13 +47,19 @@ services:
     environment:
       - VERSION_NUMBER  # this overrides value in .env if a different value was specified to deploy.sh
       - UPDATE_DATE
-    command: bash -c "uwsgi --socket :8000 --master --processes=4 --wsgi-file /usr/local/askcos-site/wsgi.py -b 32768"
+    command: bash -c "uwsgi --socket :8000 --master --wsgi-file /usr/local/askcos-site/wsgi.py -b 32768"
     expose:
       - '8000'
     volumes:
       - 'staticdata:/usr/local/askcos-site/static'
       - 'appdata:/usr/local/askcos-core/askcos/data'
       - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+      - type: bind
+        source: ../askcos-site/askcos_site
+        target: /usr/local/askcos-site/askcos_site
+      - type: bind
+        source: ../askcos-core/askcos
+        target: /usr/local/askcos-core/askcos
     depends_on:
       - mongo
       - mysql

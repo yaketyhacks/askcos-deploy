@@ -1,0 +1,287 @@
+version: '2.2'
+services:
+  nginx:
+    image: ${PUBLIC_IMAGE_REGISTRY}nginx:1.19-alpine
+    restart: always
+    volumes:
+      - './nginx.conf:/etc/nginx/nginx.conf'
+      - './uwsgi_params:/etc/nginx/uwsgi_params'
+      - './askcos.ssl.cert:/etc/ssl/certs/askcos.ssl.cert'
+      - './askcos.ssl.key:/etc/ssl/private/askcos.ssl.key'
+      - 'staticdata:/static'
+    ports:
+      - '80:80'
+      - '443:443'
+    depends_on:
+      - app
+
+  mysql:
+    image: ${PUBLIC_IMAGE_REGISTRY}mysql:5.7
+    hostname: mysql
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - 'mysql_data:/var/lib/mysql'
+    expose:
+      - '3306'
+
+  mongo:
+    image: ${PUBLIC_IMAGE_REGISTRY}mongo:4.4
+    command: --wiredTigerCacheSizeGB 1.5
+    hostname: mongo
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - 'mongo_data:/data/db'
+      - 'appdata:/data/app'
+
+  app:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    hostname: app
+    restart: always
+    env_file:
+      - .env
+      - customization
+    environment:
+      - VERSION_NUMBER  # this overrides value in .env if a different value was specified to deploy.sh
+      - UPDATE_DATE
+    command: bash -c "uwsgi --socket :8000 --master --processes=4 --wsgi-file /usr/local/askcos-site/wsgi.py -b 32768"
+    expose:
+      - '8000'
+    volumes:
+      - 'staticdata:/usr/local/askcos-site/static'
+      - 'appdata:/usr/local/askcos-core/askcos/data'
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  cr_network_worker:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 2 -Q cr_network_worker -n cr_network_worker@%h --pool=gevent"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  cr_network_v2_worker:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 1 -Q cr_network_v2_worker -n cr_network_v2_worker@%h --pool=gevent"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  tb_coordinator_mcts:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 1 -Q tb_coordinator_mcts -n tb_coordinator_mcts@%h --pool=gevent --without-heartbeat"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  tb_coordinator_mcts_v2:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 1 -Q tb_coordinator_mcts_v2 -n tb_coordinator_mcts_v2@%h --pool=gevent --without-heartbeat"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  tb_c_worker:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 12 -Q tb_c_worker -n tb_c_worker@%h --pool=gevent"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  sites_worker:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 1 -Q sites_worker --pool=gevent -n sites_worker@%h"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  selec_worker:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 1 -Q selec_worker --pool=gevent -n selec_worker@%h"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  impurity_worker:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 1 -Q impurity_worker --pool=gevent -n impurity_worker@%h"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  atom_mapping_worker:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 3 -Q atom_mapping_worker --pool=gevent -n atom_mapping_worker@%h"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  tffp_worker:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 5 -Q tffp_worker --pool=gevent -n tffp_worker@%h"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  path_ranking_worker:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 1 -Q path_ranking_worker -n path_ranking_worker@%h"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  descriptors_worker:
+    image: ${ASKCOS_IMAGE_REGISTRY}askcos-site:${VERSION_NUMBER}
+    restart: always
+    env_file:
+      - .env
+    command: bash -c "celery -A askcos_site worker -c 1 -Q descriptors_worker -n descriptors_worker@%h"
+    volumes:
+      - './custom_django_settings.py:/usr/local/askcos-site/askcos_site/custom_settings.py'
+    depends_on:
+      - mongo
+      - mysql
+      - rabbit
+      - redis
+
+  template-relevance-reaxys:
+    image: ${ASKCOS_IMAGE_REGISTRY}template-relevance-reaxys:1.0
+    restart: always
+    expose:
+      - 8501
+
+  template-relevance-pistachio:
+    image: ${ASKCOS_IMAGE_REGISTRY}template-relevance-pistachio:1.0
+    restart: always
+    expose:
+      - 8501
+
+  fast-filter:
+    image: ${ASKCOS_IMAGE_REGISTRY}fast-filter:1.0
+    restart: always
+    expose:
+      - 8501
+
+  ts-pathway-ranker:
+    image: ${ASKCOS_IMAGE_REGISTRY}pathway-ranker:1.0
+    restart: always
+
+  ts-descriptors:
+    image: ${ASKCOS_IMAGE_REGISTRY}descriptors:1.0
+    restart: always
+
+  ts-rxnmapper:
+    image: ${ASKCOS_IMAGE_REGISTRY}rxnmapper:0.1.2
+    restart: always
+
+  redis:
+    image: ${PUBLIC_IMAGE_REGISTRY}redis:6.0-alpine
+    hostname: redis
+    env_file:
+      - .env
+    restart: always
+    expose:
+      - '${REDIS_PORT}'
+    volumes:
+      - 'redisdata:/data'
+    command: redis-server --port ${REDIS_PORT}
+
+  rabbit:
+    image: ${PUBLIC_IMAGE_REGISTRY}rabbitmq:3.8-alpine
+    hostname: rabbit
+    env_file:
+      - .env
+    restart: always
+    expose:
+      - '${RABBITMQ_NODE_PORT}'
+
+volumes:
+  redisdata:
+  mysql_data:
+  mongo_data:
+  staticdata:
+  appdata:
